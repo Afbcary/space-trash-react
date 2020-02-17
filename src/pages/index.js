@@ -12,29 +12,60 @@ export default class IndexPage extends React.Component {
       paused: false,
       menuText: "Start",
       ship: null,
-      asteroids: [],
+      trash: [],
       canvas: null,
       ctx: null,
       canvasWidth: 0,
       canvasHeight: 0,
+      started: false,
     }
-    
+
     this.togglePause = this.togglePause.bind(this)
     this.startGame = this.startGame.bind(this)
+    this.changeDirection = this.changeDirection.bind(this)
   }
-  
+
   componentDidMount() {
-    this.addOneAsteroidOnEachEdge()
-    this.addOneAsteroidOnEachEdge()
-    this.addOneAsteroidOnEachEdge()
-    this.addOneAsteroidOnEachEdge()
-    this.addOneAsteroidOnEachEdge()
-    this.addOneAsteroidOnEachEdge()
     const interval = setInterval(() => {
       if (!this.state.paused) {
-        this.drawSpace()
-        this.drawShip()
-        this.drawAsteroids()
+        if (this.state.ship) {
+          this.bounceShipOffWall()
+          this.moveShip()
+          this.setState(state => {
+            let score = state.score + 1
+            let trash = state.trash
+            if (this.state.score % 1000 === 0) {
+              trash = trash.concat(
+                getTrashOnEachEdge(1, state.canvasWidth, state.canvasHeight)
+              )
+            }
+            return {
+              score: score,
+              trash: trash,
+            }
+          })
+        }
+
+        // draw trash
+        for (let tr of this.state.trash) {
+          this.bounceObjectOffWall(tr)
+          tr.x += tr.xGrow == null ? 0 : tr.xGrow ? tr.speed : -tr.speed
+          tr.y += tr.yGrow == null ? 0 : tr.yGrow ? tr.speed : -tr.speed
+          this.drawObject(tr)
+          if (this.state.ship && this.hasCollision(tr, this.state.ship)) {
+            this.gameOver()
+          }
+        }
+
+        // draw space
+        this.setState(state => {
+          const ctx = state.ctx
+          ctx.fillStyle = "rgba(0,0,0,0.5)" // 0.08
+          ctx.fillRect(0, 0, this.state.canvasWidth, this.state.canvasHeight)
+          return {
+            ctx,
+          }
+        })
       }
     }, 10)
 
@@ -47,6 +78,10 @@ export default class IndexPage extends React.Component {
       canvasHeight: (canvas.height = window.innerHeight),
       interval: interval,
     })
+    const trash = getTrashOnEachEdge(6, canvas.width, canvas.height)
+    this.setState({
+      trash: trash,
+    })
   }
 
   render() {
@@ -55,6 +90,9 @@ export default class IndexPage extends React.Component {
         <canvas
           ref="canvas"
           style={{ height: "100%", width: "100%", backgroundColor: "black" }}
+          tabIndex="-1"
+          onKeyDown={e => this.changeDirection(e.keyCode, true)}
+          onKeyUp={e => this.changeDirection(e.keyCode, false)}
         ></canvas>
         <ScoreBoard
           highScore={this.state.highScore}
@@ -62,7 +100,7 @@ export default class IndexPage extends React.Component {
           paused={this.state.paused}
           togglePause={this.togglePause}
         ></ScoreBoard>
-        {this.state.paused && (
+        {(this.state.paused || !this.state.started) && (
           <Menu text={this.state.menuText} start={this.startGame}></Menu>
         )}
       </div>
@@ -83,51 +121,26 @@ export default class IndexPage extends React.Component {
       yVelocity: 0,
       xAccel: 0,
       yAccel: 0,
-      alive: true,
       size: 6,
       color: "#FFFF00",
     }
+    const cw = this.state.canvasWidth
+    const ch = this.state.canvasHeight
 
-    const a1 = this.buildAsteroid()
-    a1.x = (3 * this.state.canvasWidth) / 4
-    const a2 = this.buildAsteroid()
-    a2.x = (3 * this.state.canvasWidth) / 4
-    const a3 = this.buildAsteroid()
-    a3.x = this.state.canvasWidth / 2
-    const a4 = this.buildAsteroid()
-    a4.x = this.state.canvasWidth / 2
-    const a5 = this.buildAsteroid()
-    const asteroids = [a1, a2, a3, a4, a5]
+    const a1 = buildTrash((3 * cw) / 4, rand(ch))
+    const a2 = buildTrash((3 * cw) / 4, rand(ch))
+    const a3 = buildTrash(cw / 2, rand(ch))
+    const a4 = buildTrash(cw / 2, rand(ch))
+    const a5 = buildTrash(cw, rand(ch))
+    const newTrash = [a1, a2, a3, a4, a5]
 
     this.setState({
       ship: newShip,
-      score: 0,
+      score: 1,
       paused: false,
-      asteroids: asteroids,
+      trash: newTrash,
+      started: true,
     })
-  }
-
-  //TODO
-  drawAsteroids() {
-    for (let asteroid of this.state.asteroids) {
-      this.bounceObjectOffWall(asteroid)
-      asteroid.x +=
-        asteroid.xGrow == null
-          ? 0
-          : asteroid.xGrow
-          ? asteroid.speed
-          : -asteroid.speed
-      asteroid.y +=
-        asteroid.yGrow == null
-          ? 0
-          : asteroid.yGrow
-          ? asteroid.speed
-          : -asteroid.speed
-      this.drawObject(asteroid)
-      if (this.state.ship && this.hasCollision(asteroid, this.state.ship)) {
-        this.gameOver()
-      }
-    }
   }
 
   gameOver() {
@@ -145,17 +158,6 @@ export default class IndexPage extends React.Component {
     const xVector = Math.pow(obj1.x - obj2.x, 2)
     const yVector = Math.pow(obj1.y - obj2.y, 2)
     return Math.sqrt(xVector + yVector) < collisionDistance
-  }
-
-  drawSpace() {
-    this.setState(state => {
-      const ctx = state.ctx
-      ctx.fillStyle = "rgba(0,0,0,0.5)" // 0.08
-      ctx.fillRect(0, 0, this.state.canvasWidth, this.state.canvasHeight)
-      return {
-        ctx,
-      }
-    })
   }
 
   moveShip() {
@@ -219,7 +221,6 @@ export default class IndexPage extends React.Component {
     })
   }
 
-  //TODO
   bounceObjectOffWall(obj) {
     if (obj.x - obj.size <= 0) {
       obj.xGrow = true
@@ -235,100 +236,66 @@ export default class IndexPage extends React.Component {
     }
   }
 
-  drawShip() {
-    if (this.state.ship && this.state.ship.alive) {
-      this.bounceShipOffWall()
-      this.moveShip()
+  changeDirection(keyCode, isKeyDown) {
+    if (this.state.ship) {
       this.setState(state => {
+        const ship = state.ship
+
+        if (keyCode === 38) {
+          // up arrow
+          ship.yAccel = isKeyDown ? -0.08 : 0
+        } else if (keyCode === 40) {
+          // down arrow
+          ship.yAccel = isKeyDown ? 0.08 : 0
+        } else if (keyCode === 37) {
+          // left arrow
+          ship.xAccel = isKeyDown ? -0.08 : 0
+        } else if (keyCode === 39) {
+          // right arrow
+          ship.xAccel = isKeyDown ? 0.08 : 0
+        }
         return {
-          score: state.score++,
+          ship,
         }
       })
-      if (this.state.score % 1000 === 0) {
-        this.addOneAsteroidOnEachEdge()
-      }
-    }
-  }
-
-  // window.addEventListener("keydown", (e) => changeDirection(e, true), true);
-  // window.addEventListener("keyup", (e) => changeDirection(e, false), true);
-
-  // below : not used?
-  // const accelerationMap = {};
-
-  changeDirection(e, isKeyDown) {
-    e = e || window.event
-    this.setState(state => {
-      const ship = state.ship
-
-      if (e.keyCode === "38") {
-        // up arrow
-        ship.yAccel = isKeyDown ? -0.08 : 0
-      } else if (e.keyCode === "40") {
-        // down arrow
-        ship.yAccel = isKeyDown ? 0.08 : 0
-      } else if (e.keyCode === "37") {
-        // left arrow
-        ship.xAccel = isKeyDown ? -0.08 : 0
-      } else if (e.keyCode === "39") {
-        // right arrow
-        ship.xAccel = isKeyDown ? 0.08 : 0
-      }
-      return {
-        ship,
-      }
-    })
-    e.preventDefault()
-  }
-
-  addOneAsteroidOnEachEdge() {
-    const aTop = this.buildAsteroid()
-    aTop.x = randomIntFromUniformDistribution(0, this.state.canvasWidth)
-    aTop.y = 0
-    const aRight = this.buildAsteroid()
-    aRight.y = randomIntFromUniformDistribution(0, this.state.canvasHeight)
-    aRight.x = this.state.canvasWidth
-    const aDown = this.buildAsteroid()
-    aDown.x = randomIntFromUniformDistribution(0, this.state.canvasWidth)
-    aDown.y = this.state.canvasHeight
-    const aLeft = this.buildAsteroid()
-    aLeft.y = randomIntFromUniformDistribution(0, this.state.canvasHeight)
-    aLeft.x = 0
-
-    this.setState(state => {
-      const asteroids = state.asteroids.concat(aTop, aRight, aDown, aLeft)
-      return {
-        asteroids,
-      }
-    })
-  }
-  buildAsteroid() {
-    const randSpeed = randomIntFromUniformDistribution(1, 10) * 0.1
-    const randSize = randomIntFromUniformDistribution(5, 50)
-    return {
-      size: randSize,
-      x: this.state.canvasWidth,
-      y: randomIntFromUniformDistribution(0, this.state.canvasHeight),
-      xGrow: false,
-      yGrow: false,
-      speed: randSpeed,
-      color: getAsteroidColor(),
     }
   }
 }
 
+function getTrashOnEachEdge(num, cw, ch) {
+  let trash = []
+  for (let i = 0; i < num; i++) {
+    const aTop = buildTrash(rand(cw), 0)
+    const aRight = buildTrash(0, rand(ch))
+    const aDown = buildTrash(rand(cw), ch)
+    const aLeft = buildTrash(cw, rand(ch))
 
-function getAsteroidColor() {
+    trash = trash.concat(aTop, aRight, aDown, aLeft)
+  }
+  return trash
+}
+
+function buildTrash(x, y) {
+  const randSpeed = randomIntFromUniformDistribution(1, 10) * 0.1
+  const randSize = randomIntFromUniformDistribution(5, 50)
+  return {
+    size: randSize,
+    x: x,
+    y: y,
+    xGrow: false,
+    yGrow: false,
+    speed: randSpeed,
+    color: getTrashColor(),
+  }
+}
+
+function getTrashColor() {
   return `hsla(${randomIntFromUniformDistribution(113, 255)},100%,60%,1)`
 }
 
-// function formatRGBA(r, g, b, a) {
-//   return `rgb(${r},${g},${b},${a})`
-// }
-
-// function rand255() {
-//   return randomIntFromUniformDistribution(0, 255)
-// }
+function rand(mx) {
+  return ~~(Math.random() * (mx - 0 + 1))
+}
 
 function randomIntFromUniformDistribution(mn, mx) {
   return ~~(Math.random() * (mx - mn + 1) + mn)
